@@ -1,0 +1,558 @@
+---
+title: "Austin Airbnb: Trends in Revenue, Occupancy, and Listings"
+author: "A.."
+date: "08/08/2025"
+format: docx
+editor: visual
+description: "This exploratory data analysis reflects my personal interpretation of the data and is intended for informational and learning purposes only. Please do not cite or reference this work as a formal source in other documents, publications, or decision-making processes. Always validate findings with verified methods and authoritative sources"
+---
+
+## Description
+
+A holistic data set of Austin property listings covering the period from May 2024 to May 2025. This data set includes comprehensive information on each property, such as detailed attributes (size, type, location). In addition, it features a robust set of trailing twelve-month (TTM) performance metrics such as occupancy rates, rental income, and number of vacant days, providing a well-rounded view of each property's operational and market performance over the past year.
+
+## Sources
+
+1.  https://insideairbnb.com/get-the-data/
+2.  https://www.airroi.com/data-portal/markets/austin
+
+## Variables
+
+1.  host_id: quantitative -\> Unique identifier for the host
+
+2.  host_name: categorical -\> Name of the host
+
+3.  listing_type: categorical -\> Type of property (e.g., apartment, house, villa)
+
+4.  room_type: categorical -\> Type of room (e.g., entire home, private room)
+
+5.  amenities: categorical -\> List of amenities offered
+
+6.  tier: categorical -\> Quality classification (Basic, Plus, or Luxury tier) of the listing
+
+7.  cancellation_policy: categorical -\> Type of cancellation policy offered
+
+8.  zip_code: categorical -\> Neighborhood of the property.
+
+9.  guests: quantitative -\> Maximum number of guests allowed
+
+10. bedrooms: quantitative -\> Number of bedrooms available
+
+11. min_nights: quantitative -\> Minimum number of nights required to book
+
+12. ttm_occupancy: quantitative -\> Occupancy rate in trailing twelve months
+
+13. ttm_revenue: quantitative -\> Total revenue in trailing twelve months
+
+14. ttm_avg_rate: quantitative -\> Average daily rate in trailing twelve months
+
+15. num_reviews: quantitative -\> Total number of reviews received
+
+```{r}
+#| results: hide
+#| warning: FALSE
+#| message: FALSE
+#| error: FALSE
+#| include: false
+#| label: libraries
+
+library(tidyverse) #loads ggplot and the others
+library(stringr)
+library(scales)
+library(knitr)
+```
+
+```{r}
+#| label: load-raw-data
+#| include: false
+
+airbnb <- 
+  read_csv("../Austin_airbnb_project_AFC.csv", na = c("#N/A", ""))
+
+colors <- c(
+  "#1f77b4","#a6bddb"
+)
+
+```
+
+## A Data-Driven Look at Short-Term Rentals (2024–2025)
+
+Short-term rentals (STRs) are a dynamic segment of Austin’s housing and travel economy, but performance varies significantly across listing types and neighborhoods. With rising competition, hosts and investors are asking:
+
+“Is Airbnb still profitable in Austin?”
+
+To explore this, we analyzed data from May 2024 to May 2025, which includes 271 active Airbnb listings across Austin. The data tracks key performance indicators such as occupancy rates, daily prices, and annual revenue, giving us insight into what drives success in the local STR market.
+
+-   How profitable is the average Airbnb listing in Austin?
+
+-   How much do Airbnb hosts actually earn in Austin?
+
+-   How Does Bedroom Count Influence Revenue?
+
+-   Which ZIP Codes Perform Best for Occupancy?
+
+-   How Do Listing Types Influence Average Daily Rate (ADR)?
+
+-   Are certain property types better for large groups?
+
+**Key Austin Airbnb Performance Metrics Overview**
+
+```{r}
+#| label: summary-analysis
+#| echo: false
+
+airbnb <- airbnb |> 
+  mutate(
+    ttm_revenue = if_else(ttm_revenue < 200000, ttm_revenue, NA)
+  )
+
+summary_stats_rep1 <- airbnb |>
+  summarise(
+    `Avg. Daily Rate` = mean(ttm_avg_rate, na.rm = TRUE),
+    `Median Annual Revenue` = median(ttm_revenue, na.rm = TRUE)
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "Metric",
+    values_to = "Value"
+  ) |>
+  mutate(
+    Value = label_currency()(Value)
+  )
+
+summary_stats_rep2 <- airbnb |>
+  summarise(
+    `Avg. Occupancy Rate` = (mean(ttm_occupancy, na.rm = TRUE)),
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "Metric",
+    values_to = "Value"
+  ) |>
+  mutate(
+    Value = label_percent()(Value)
+  )
+
+summary_stats_rep3 <- airbnb |>
+  summarise(
+    `Total Listing` = n(),
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "Metric",
+    values_to = "Value"
+  ) |>
+   mutate(
+    Value = label_number()(Value)
+  )
+
+kable(bind_rows(summary_stats_rep3, summary_stats_rep2, summary_stats_rep1))
+```
+
+## Austin Airbnb Revenue Variations: Revenue vs. Bedroom Count
+
+"More Bedrooms = More Revenue"? Not Always.
+
+One of the first questions investors and hosts ask is whether adding more bedrooms leads to higher profits. To explore this, we visualized the relationship between number of bedrooms, listing tier (Basic vs. Plus), and total annual revenue across listings. Each point on the scatterplot represents an individual Airbnb listing. The X-axis shows the number of bedrooms, and the Y-axis shows total revenue over the past 12 months, capped at \$150,000 for clarity. Color differentiates listing tiers: Plus-tier listings (blue) vs. Basic listings (light blue). A red linear trendline shows the general correlation between bedrooms and revenue.
+
+-   Larger homes tend to earn more, but the relationship isn't perfectly linear. The trend line rises, but not steeply, and revenue spreads out significantly at more than 3 bedrooms.
+-   Plus-tier listings consistently outperform Basic-tier listings, regardless of size. This highlights the importance of quality, design, and amenities, all of which are emphasized in the Plus classification.
+-   Even small, well-managed 1-bedroom Plus listings can generate significant revenue, sometimes rivaling 3-bedroom Basic listings.
+-   There’s a wider range of revenue outcomes among larger homes. This means that while some large homes succeed, others under perform likely due to factors like poor location, low occupancy, or weak management.
+
+```{r}
+#| label: revenue-vs-bedrooms
+#| echo: false
+
+airbnb <- airbnb |> 
+  mutate(
+    ttm_revenue = if_else(ttm_revenue < 200000, ttm_revenue, NA), 
+    bedrooms = if_else(bedrooms < 6, bedrooms, NA)
+  )
+
+# Summarize revenue per tier
+tier_revenue <- airbnb |>
+  filter(!is.na(ttm_revenue), !is.na(tier)) |>
+  group_by(tier) |>
+  summarise(total_revenue = sum(ttm_revenue, na.rm = TRUE)) |>
+  mutate(
+    label = paste0(tier, " (", label_dollar()(total_revenue), ")")
+  )
+
+# Create a named vector for custom legend labels
+legend_labels <- setNames(tier_revenue$label, tier_revenue$tier)
+
+ggplot(airbnb, aes(x = bedrooms, y = ttm_revenue, color = tier)) +
+  geom_point(alpha = 0.9, position = position_jitter(), na.rm = TRUE, size = 2) +
+  geom_smooth(se = FALSE, method = 'lm', formula = y ~ x, linewidth = 1, na.rm = TRUE, color = "#843c39") +
+  scale_x_continuous(breaks = seq(0, 10, by = 1)) +
+  scale_y_continuous(labels = scales::label_dollar(), limits = c(0, 150000)) +
+  scale_color_manual(
+    values = c("Plus" = "#1f77b4", "Basic" = "#a6bddb"),
+    labels = legend_labels
+  ) +
+  labs(
+    title = "Distribution of Revenue by Bedrooms",
+    y = "Revenue",
+    x = "Bedrooms Available",
+    color = "Tier Classification"
+  ) +
+  theme_minimal()
+```
+
+At first, it might seem like offering more bedrooms is the best way to earn more with Airbnb. But this chart shows a more detailed picture. Just having a bigger place doesn’t always lead to higher profits. What really matters is how well the listing is managed, including its quality (tier), pricing, and the overall guest experience. So, when we ask, “Is Airbnb profitable in Austin today?” This chart suggests the answer is yes, but success depends more on how you run the listing than on its size. A well-managed small place can do just as well as a larger one.
+
+## Austin Airbnb Occupancy Rate Trends: Airbnb Occupancy by ZIP Code
+
+"Where in Austin Are Guests Actually Booking?"
+
+Location is one of the most important factors for real estate investment and short-term rentals are no exception. To understand where Airbnb demand is strongest, we analyzed the average occupancy rate by ZIP code across the city. This horizontal bar chart ranks each ZIP code by average occupancy rate. A dashed line represents the overall average occupancy across all listings approximately 35%. ZIP codes with occupancy above average are shown in blue, and those below average in light blue. Labels show each ZIP code’s exact occupancy percentage for clarity.
+
+-   Significant variation exists across neighborhoods from as low as 3–6% occupancy in outlying areas (78758, 78735, 78729) to 48–80% in high-demand zones (78751 and 78754).
+-   Top-performing ZIP codes:
+    -   78754 (East/Northeast Austin): 80% occupancy possibly driven by affordability or extended-stay demand.
+    -   78751 (North Campus/Hyde Park): 48% likely due to its walkability, UT student/visitor demand, and central location.
+    -   78721, 78756, and 78757 also exceed 44%, highlighting strong pockets of consistent bookings.
+-   Low-performing ZIP codes are typically farther from downtown or less tourist-friendly, including 78758, 78735, and 78744, all under 5%.
+
+```{r}
+#| label: zip-vs-occupancy
+#| echo: false
+
+# Summarized data
+zip_occupancy <- airbnb |>
+  filter(!is.na(zip_code)) |>
+  group_by(zip_code) |>
+  summarise(
+    avg_occupancy = mean(ttm_occupancy, na.rm = TRUE)
+  ) |>
+  ungroup() |>
+  mutate(
+    zip_code = fct_reorder(factor(zip_code), avg_occupancy),
+    label = percent(avg_occupancy, accuracy = 1)
+  )
+
+overall_avg_occupancy <- mean(zip_occupancy$avg_occupancy, na.rm = TRUE)
+
+ggplot(zip_occupancy, aes(x = zip_code, y = avg_occupancy, fill = avg_occupancy > overall_avg_occupancy)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = label), hjust = -0.1, size = 3, color = "black") +
+  geom_hline(yintercept = overall_avg_occupancy, linetype = "dashed", color = "#843c39", linewidth = 0.8) +
+  annotate("text", x = 1, y = overall_avg_occupancy + 0.02, label = paste("Mean =", percent(overall_avg_occupancy, accuracy = 1)), color = "#843c39", size = 3, hjust = 0) +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format(accuracy = 5)) +
+  scale_fill_manual(values = c("TRUE" = "#1f77b4", "FALSE" = "#a6bddb")) +
+  labs(
+    title = "Average Airbnb Occupancy Rate by ZIP Code",
+    x = "ZIP Code",
+    y = "Average Occupancy Rate"
+  ) +
+  theme_minimal()
+
+```
+
+While central ZIPs like 78701 (downtown) and 78704 (South Austin) are known for their nightlife and culture, some of the highest occupancy is occurring in lesser-known areas like 78754 and 78721. This could be due to:
+
+-   Lower competition.
+
+-   More affordable pricing.
+
+-   Long-term stay demand from traveling workers or relocators.
+
+Profitability isn’t just about premium locations, it’s about finding the right balance of demand, price, and availability. Investors should consider under-the-radar ZIPs with high occupancy, especially in East and Northeast Austin.
+
+## Austin Airbnb Average Daily Rate (ADR) Trends: Average Daily Rate by Listing Type
+
+"What Types of Properties Command Higher Prices?"
+
+While occupancy shows how often listings are booked, price per night or Average Daily Rate (ADR), reveals how much guests are willing to pay for different experiences. To explore this, we grouped listings by type like Home, Condo, Guest Suite, Entire Loft, and visualized the distribution of ADRs over the past year. This boxplot shows the distribution of average daily rates by listing type. Each box represents a bold horizontal line for the median, and black dots marking the mean, and outliers are shown as blue points.
+
+-   Entire Lofts and Homes command the highest prices, with median rates of \$431 and \$251, respectively. Their means are even higher due to a few luxury or premium-priced outliers.
+-   Townhouses and Bungalows follow, with median ADRs around \$194–\$182, showing strong pricing power possibly due to unique architecture or larger square footage. Cottages, Guest Houses, and Unique Stays have the lowest median ADRs, but may appeal to budget travelers or long-term stays.
+-   In some categories, mean is noticeably higher than median, suggesting skewed distributions likely caused by high-end listings pulling the average up.
+-   Condos and Guest Suites, while common, have more modest median rates (around \$139–\$149), indicating they are affordable options with relatively stable pricing.
+
+```{r}
+#| label: average-rate-vs-listing-type
+#| echo: false
+
+airbnb <- airbnb |>
+  mutate(
+    group_listing_type = case_when(
+      str_detect(listing_type, "home") ~ "Home",
+      str_detect(listing_type, "guesthouse") ~ "Guest House",
+      str_detect(listing_type, "condo") ~ "Condo",
+      str_detect(listing_type, "guest suite") ~ "Guest Suite",
+      str_detect(listing_type, "townhouse") ~ "Town House",
+      str_detect(listing_type, "bungalow") ~ "Bungalow",
+      str_detect(listing_type, "cottage") ~ "Cottage",
+      str_detect(listing_type, "Yurt") | 
+        str_detect(listing_type, "cabin") |
+        str_detect(listing_type, "Boat") | 
+        str_detect(listing_type, "Camper") ~ "Unique Stays",
+      TRUE ~ listing_type
+  )) 
+
+airbnb <- airbnb |>
+  mutate(
+    group_listing_type = fct_recode(group_listing_type,
+    "Entire Loft" = "Entire loft",
+    "Entire Loft" = "Entire villa",
+    "Entire Unit" = "Entire rental unit"
+  ))
+
+airbnb |>
+  mutate(
+    ttm_avg_rate = if_else(ttm_avg_rate < 1500, ttm_avg_rate, NA), 
+  ) |>
+  filter(!is.na(ttm_avg_rate), !is.na(group_listing_type)) |>
+  ggplot(aes(x = fct_reorder(group_listing_type, ttm_avg_rate, median), y = ttm_avg_rate)) +
+    geom_boxplot(outlier.color = "#1f77b4", outlier.size = 2, width = 0.6, na.rm = TRUE, fill = "#a6bddb") +
+    scale_y_continuous(labels = scales::label_dollar(), breaks = seq(0, 2100, 200)) +
+    labs(
+      title = "Distribution of Listing Type by Average Rate",
+      subtitle = "Each box shows the median and outliers",
+      y = "Average Daily Rent Rate",
+      x = "Listing Type",
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+Property type significantly impacts pricing potential. Larger or more unique properties (like Entire Lofts or Houses) allow for premium pricing, but they may also come with higher management costs or lower occupancy. In contrast, smaller, common units (like Condos and Guest Suites) offer steady, mid-range pricing with potentially higher booking frequency.
+
+Investors and hosts need to balance pricing potential with occupancy likelihood and operational costs. A high-ADR unit doesn’t always mean higher annual revenue especially if it's booked less often. Consider aligning listing type with target traveler segments:
+
+-   Couples? Go for a stylish condo or suite.
+-   Families or groups? A full home or townhouse performs well.
+-   Adventurous tourists? Unique stays offer charm at a modest price.
+
+## Who Are the Top-Performing Airbnb Hosts in Austin?
+
+"Who's Winning, and Why?"
+
+After looking at occupancy, pricing, and listing types, let's dive in Who is actually making the most money on Airbnb in Austin? To find out, we summarized host-level performance combining the total number of listings each host manages and the total revenue generated over the past 12 months (May 2024–May 2025).
+
+This bar chart shows the top 8 revenue-generating hosts, ordered by total revenue. The height of each bar represents the number of listings per host, and the dollar value above each bar shows the total revenue they’ve earned over the past year.
+
+-   Ryan stands out as the top earner, generating \$365K from 8 listings nearly double the revenue of the next highest performer.
+-   Most top hosts have 2–4 listings, but two (Ryan and Pete) operate at larger scale with 8 properties each.
+-   Despite having fewer listings, hosts like Kristen, Eric, and Greg & Amanda still earned over \$150K, suggesting efficient management or high-quality properties.
+-   All top hosts operate multiple listings, no solo property owners appear in this filtered list, which emphasizes the impact of scaling.
+
+```{r}
+#| label: best-performance
+#| echo: false
+
+best_performance <- airbnb |>
+  group_by(host_id, host_name) |>
+  summarise(
+    n = n(),
+    revenue = sum(ttm_revenue),
+    .groups = "drop"
+  ) |>
+  arrange(desc(revenue)) |>
+  filter(!is.na(host_name)) |>
+  head(8)
+
+ggplot(best_performance, aes(x = fct_reorder(host_name, revenue), y = n)) +
+  geom_col(fill = "#a6bddb", color = "black", width = 0.6) +
+  geom_text(aes(label = label_currency()(revenue)),
+          vjust = -0.4, size = 3) +
+  scale_fill_manual(values = colors) + 
+  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+   labs(
+    title = "Top 8 Airbnb Hosts by Revenue",
+    x = "Host Name",
+    y = "Number of Listings"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+The chart shows that professional or semi-professional hosts (with multiple listings and likely consistent quality control) are generating the highest revenues.
+
+Scale matters: Managing multiple listings increases earnings potential, especially if those properties are well-located and well-managed.
+
+Efficiency also wins: Some hosts with just 2–3 properties are earning as much as those with larger portfolios, suggesting that property quality, pricing strategy, and tier designation (like "Plus") play a major role. Airbnb in Austin isn't passive income, top hosts are likely treating it as a business.
+
+## Austin Airbnb Rental Market Composition: Cancellation Policy by Room Type
+
+“How Do Airbnb Hosts in Austin Manage Risk?”
+
+Pricing and occupancy are just part of the profitability puzzle. Cancellation policies are another critical, but often overlooked lever. Hosts can choose between Flexible, Moderate, Firm, Strict, and Super Strict policies, each offering varying levels of protection against last-minute cancellations. To understand host behavior, this chart shows how cancellation policies vary by room type comparing Entire Home listings vs. Private Rooms.
+
+The bars represent total number of listings under each cancellation policy. Within each bar, colors show the split between private rooms and entire homes. Text labels above each bar summarize the range of percentage shares (10–90% of listings under that policy were either entire homes or private rooms).
+
+-   Strict and Firm policies dominate, the majority of listings use these stricter cancellation terms, likely to protect revenue against no-shows or last-minute cancellations.
+    -   Strict: 92 listings
+    -   Firm: 70 listings
+-   Flexible policies are rare, especially among entire-home listings, only 21 listings use it, likely to avoid uncertain revenue and calendar disruption.
+-   Entire homes are more likely to use strict policies, while private rooms are more evenly spread or lean toward more lenient terms.
+    -   For example, Firm policy listings range from 10% to 90% entire homes.
+    -   Super Strict is used exclusively by entire homes, reflecting higher risk of empty nights.
+-   The label ranges ("16.9–83.1%") indicate variation in the composition of room types within each policy showing that cancellation policy is a strategic decision and not evenly applied across property types.
+
+```{r}
+#| label: cancellation_policy-by-roomtype
+#| echo: false
+
+airbnb <- airbnb |>
+  mutate(
+    cancellation_policy = if_else(str_detect(cancellation_policy, "Super Strict"), "Super Strict", cancellation_policy)
+  )
+
+# Summary data with percentages
+airbnb_percent <- airbnb |>
+  count(cancellation_policy, room_type) |>
+  group_by(cancellation_policy) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  summarise(
+    min_pct = round(min(percentage), 1),
+    max_pct = round(max(percentage), 1),
+    n = sum(n)
+  ) |>
+  mutate(
+    label = if_else(min_pct == max_pct, paste0(max_pct, "%") ,paste0(min_pct, "-", max_pct, "%"))
+  )
+
+ggplot(airbnb, aes(x = cancellation_policy, fill = room_type)) +
+  geom_bar(alpha = 0.8, color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(
+    data = airbnb_percent,
+    aes(
+      x = cancellation_policy,
+      y = n + 3,
+      label = label
+    ),
+    inherit.aes = FALSE,
+    size = 3
+  ) +
+  scale_fill_manual(
+    values = colors,
+    name = "Room Type",
+    labels = c("entire_home" = "Entire Home", "private_room" = "Private Room")
+  ) +
+  labs(
+    title = "Distribution of Cancellation Policy by Room Type",
+    x = "Cancellation Policy",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+For hosts managing entire homes (which typically earn more revenue), stricter policies help reduce risk and ensure predictable income. In contrast, private-room hosts, often targeting budget travelers or shorter stays tend to use more flexible policies to stay competitive and fill availability.
+
+-   Stricter policies help protect high nightly rates and longer stays crucial for revenue stability.
+-   More flexible policies may work for hosts aiming for high turnover or last-minute bookings.
+-   This choice reflects an operational layer of host strategy, reinforcing that profitability isn’t just about what you rent, but how you manage it.
+
+## Austin Airbnb Term Rentals: Minimum Nights by Room Type
+
+"Are Hosts Targeting Short Stays or Long-Term Guests?"
+
+Short-term rentals can serve very different markets: Short stays (1–3 nights) attract tourists and weekenders. Medium stays (7–30 nights) cater to business travelers, relocations, and remote workers. Longer stays (30+ nights) can reduce turnover and qualify as mid-term rentals (MTR), often subject to different regulations.
+
+This histogram shows how minimum night stay requirements are distributed for two types of listings: Entire Homes and Private Rooms. Each bar represents a group of listings with a given minimum stay threshold (grouped in 5-day bins), and the chart is split by room type.
+
+The majority of Entire Home require 2–3 night minimums balancing flexibility with reduced turnover. There is a notable secondary spike at 30 nights, likely for mid-term rental compliance or targeting traveling professionals. A small number of homes have very high minimums (20+, 45+, 60 nights), potentially operating as monthly corporate or relocation housing.
+
+Private rooms tend to have shorter minimums, with most listings requiring just 1–2 nights. A few private room listings also require more days, suggesting some hosts may be using them for long-term housing or shared-living situations.
+
+```{r}
+#| label: minimun-nights-by-roomtype
+#| echo: false
+
+airbnb |>
+  filter(min_nights <= 80) |>
+  group_by(room_type, min_nights) |>
+  summarise(
+    n = n(),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(x = min_nights)) +
+    geom_histogram(alpha = 0.8, color = "black", fill = "#1f77b4", linewidth = 0.3, binwidth = 5, na.rm = TRUE) +
+    facet_wrap(~ room_type, scales = "free_y", labeller = labeller(
+      room_type = c("entire_home" = "Entire Home", "private_room" = "Private Room")
+    )) +
+    scale_y_continuous(limits = c(0, 4)) +
+    scale_x_continuous(limits = c(1, 70)) +
+    labs(
+      title = "Distribution of Minimum Nights by Room Type",
+      x = "Minimum Nights Requirement",
+      y = "Count of Listings"
+    ) +
+    theme_minimal()
+```
+
+Entire homes tend to aim for flexible, short-to-mid stays, while private rooms skew toward short-term or budget-conscious guests.
+
+-   Short minimums (1–3 nights): More bookings, higher turnover, but more cleaning/management effort.
+
+-   30-night minimums: Less turnover, potentially stable monthly income, often targeting business travelers, or regulatory workarounds.
+
+-   Long minimums more than 45 days: Niche market, fewer guests, but potentially more reliable income and less admin.
+
+## Austin Airbnb Guests Capacity: Guest Capacity by Listing Type
+
+“Which Types of Listings Serve Groups — and Where Are the Gaps?”
+
+Profitability on Airbnb isn’t just about how often or how much you can charge, it’s also about who you’re serving. A property optimized for 2 guests won’t be as profitable per night as one hosting more than 10, but it might enjoy better occupancy. This heatmap visualizes the number of listings by guest capacity across each grouped listing type.
+
+Each tile shows the count of listings in that category, with darker blues indicating more listings. Rows represent guest capacity brackets (0–4, 4–10, 10–16), and columns represent listing types like Condo, Home, Guest House.
+
+-   Small listings dominate: Most listings especially Entire Units, Guest Houses, Suites, and Condos cater to 0–4 guests, which likely aligns with solo travelers, couples, or business stays.
+-   Homes are the clear winner for larger groups:
+    -   They dominate the 4–10 guest category 67 listings.
+    -   They also lead in the 10–16 guest group 35 listings, far more than any other type.
+-   Other types like Town Houses, Lofts, and Bungalows have limited capacity for larger groups, suggesting they serve mid-size parties or niche travelers.
+-   Unique stays and cottages are extremely underrepresented in the more than 10 range, possibly due to zoning, size constraints, or property type limitations.
+
+```{r}
+#| label: listingtype_vs_guests-capacity
+#| echo: false
+
+airbnb_guests <- airbnb |>
+  mutate(
+    guests_group = case_when(
+      guests <= 4 ~ "0–4",
+      guests <= 10 ~ "4-10",
+      TRUE ~ "10-16"),
+    guests_group = factor(guests_group, levels = c("0–4", "4-10", "10-16"))
+  ) |>
+  group_by(group_listing_type, guests_group) |>
+  summarise(
+    n = n(), 
+    .groups = "drop"
+  )
+
+ggplot(airbnb_guests, aes(x = group_listing_type, y = guests_group, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  geom_text(aes(label = n), color = "black", size = 3) +
+  scale_fill_gradient(low = "#eef3f8", high = "#1f77b4", name = "Listing Count") +
+  labs(
+    title = "How Guest Capacity Varies by Listing Type",
+    x = "Listing Type",
+    y = "Guest Capacity Group"
+  ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+If you're targeting higher revenue potential, invest in properties that accommodate 4–10 or 10–16 guests, especially full homes. Smaller listings (under 4 guests) are more common and may face more competition, but can benefit from high occupancy and easier maintenance. There's a possible gap in medium-capacity offerings (4–10) among certain types like Guest Suites and Condos, a potential opportunity for conversion or furnishing upgrades.
+
+## Conclusion: “Is Airbnb still profitable in Austin?”
+
+Yes, with the right strategy.
+
+This analysis of Austin’s Airbnb market based on data from May 2024 to May 2025 and visualized through seven key charts reveals that profitability is highly dependent on listing type, pricing strategy, location, and operational decisions. Listings with more bedrooms generally generated higher revenue, but only when paired with high-tier service and occupancy optimization. The scatter plot of bedroom count vs. revenue showed that Plus-tier 3–5 bedroom homes can outperform, suggesting that size alone doesn't guarantee profitability, quality and management matter.
+
+Other visualizations reinforced this theme: ZIP code analysis showed large variance in performance, with 78754 reaching 80% occupancy, while others fell below 10%. Daily rates also varied by listing type Entire Lofts and Homes commanded the highest ADR \$435 at nights, while cottages and guest suites trailed lower. High-earning hosts like Ryan and Pete erns over \$200K across 8 listings demonstrated the scalability of professional hosting. Listings that allowed more flexible stays 2 to 3 nights dominated, especially in private rooms, while some entire homes targeted longer stays (30+ nights), hinting at mid-term rental strategies. Lastly, the cancellation policy and guest capacity charts showed that Homes are uniquely positioned for larger groups and stricter policies, offering higher revenue potential. Overall, Airbnb in Austin remains profitable, but only for hosts who strategically align their properties with market demand.

@@ -1,0 +1,1084 @@
+---
+title: "Airbnb Data Import Project"
+author: "A.."
+date: "06/10/2025"
+format: docx
+editor: visual
+description: "This exploratory data analysis reflects my personal interpretation of the data and is intended for informational and learning purposes only. Please do not cite or reference this work as a formal source in other documents, publications, or decision-making processes. Always validate findings with verified methods and authoritative sources"
+---
+
+## Description
+
+A holistic data set of Austin property listings covering the period from May 2024 to May 2025. This data set includes comprehensive information on each property, such as detailed attributes (size, type, amenities), and performance ratings across multiple categories (such as cleanliness, location, and cost value). In addition, it features a robust set of trailing twelve-month (TTM) performance metrics such as occupancy rates, rental income, and number of vacant days, providing a well-rounded view of each property's operational and market performance over the past year.
+
+## Sources
+
+1.  https://insideairbnb.com/get-the-data/
+2.  https://www.airroi.com/data-portal/markets/austin
+
+## Variables
+
+listing_id: quantitative -\> Unique identifier for the listing
+
+host_id: quantitative -\> Unique identifier for the host
+
+listing_name: categorical -\> Title of the listing
+
+listing_type: categorical -\> Type of property (e.g., apartment, house, villa)
+
+room_type: categorical -\> Type of room (e.g., entire home, private room)
+
+zip_code: quantitative -\> Neighborhood of the property.
+
+guests: quantitative -\> Maximum number of guests allowed
+
+bedrooms: quantitative -\> Number of bedrooms available
+
+beds: quantitative -\> Number of beds available
+
+baths: quantitative -\> Number of bathrooms available
+
+min_nights: quantitative -\> Minimum number of nights required to book
+
+superhost: logical -\> Whether the host has earned Airbnb's Superhost status
+
+cohost: logical -\> Whether someone other than the main host helps manage the property.
+
+amenities: categorical -\> List of amenities offered
+
+cancellation_policy: categorical -\> Type of cancellation policy offered
+
+tier: categorical -\> Quality classification (Basic, Plus, or Luxury tier) of the listing
+
+num_reviews: quantitative -\> Total number of reviews received
+
+rating_overall: quantitative -\> Overall star rating of the property
+
+rating_communication: quantitative -\> Rating score for host communication
+
+rating_cleanliness: quantitative -\> Rating score for cleanliness
+
+rating_location: quantitative -\> Rating score for location
+
+rating_checkin: quantitative -\> Rating score for check-in experience
+
+rating_value: quantitative -\> Rating score for value
+
+ttm_vacant_days: quantitative -\> Number of vacant days in trailing twelve months
+
+ttm_booked_days: quantitative -\> Number of booked days in trailing twelve months
+
+ttm_occupancy: quantitative -\> Occupancy rate in trailing twelve months
+
+ttm_revenue: quantitative -\> Total revenue in trailing twelve months
+
+ttm_avg_rate: quantitative -\> Average daily rate in trailing twelve months
+
+## Selected Variables
+
+listing_type: categorical -\> Type of property (e.g., apartment, house, villa)
+
+room_type: categorical -\> Type of room (e.g., entire home, private room)
+
+amenities: categorical -\> List of amenities offered
+
+tier: categorical -\> Quality classification (Basic, Plus, or Luxury tier) of the listing
+
+cancellation_policy: categorical -\> Type of cancellation policy offered
+
+zip_code: quantitative -\> Neighborhood of the property.
+
+guests: quantitative -\> Maximum number of guests allowed
+
+bedrooms: quantitative -\> Number of bedrooms available
+
+min_nights: quantitative -\> Minimum number of nights required to book
+
+ttm_vacant_days: quantitative -\> Number of vacant days in trailing twelve months
+
+ttm_booked_days: quantitative -\> Number of booked days in trailing twelve months
+
+ttm_revenue: quantitative -\> Total revenue in trailing twelve months
+
+ttm_avg_rate: quantitative -\> Average daily rate in trailing twelve months
+
+num_reviews: quantitative -\> Total number of reviews received
+
+rating_overall: quantitative -\> Overall star rating of the property
+
+## Libraries
+
+```{r}
+#| results: hide
+#| warning: FALSE
+#| message: FALSE
+#| error: FALSE
+#| label: libraries
+
+library(tidyverse) #loads ggplot and the others
+library(stringr)
+library(scales)
+library(ggrepel)
+library(ggplot2)
+library(forcats)
+library(patchwork)
+```
+
+## Load Data & Colors
+
+```{r}
+#| label: load-raw-data
+
+airbnb <- 
+  read_csv("Austin_airbnb_project_AFC.csv", na = c("#N/A", ""))
+
+colors <- c(
+  "#FC8D62", "#66C2A5", "#1f77b4", "#e7ba52", "#e377c2",
+  "#8c564b", "#2ca02c", "#7f7f7f", "#bcbd22", "#17becf",
+  "#393b79", "#637939", "#8c6d31", "#843c39", "#7b4173",
+  "#a55194", "#6b6ecf", "#ce6dbd", "#bd9e39", "#e7ba52",
+  "#9c9ede", "#d62728", "#9467bd", "#8DA0CB", "#E78AC3",
+  "#A6D854", "#ff7f0e", "#d63428", "#459ede"
+)
+
+```
+
+## Display Data
+
+```{r}
+#| label: variables-types
+
+glimpse(airbnb) #view variables and types
+```
+
+## Data Cleaning and Manipulation
+
+We explore the categorical variables using value counts in order to detect potential errors or outliers.
+
+```{r}
+#| label: explore-categorical-variables
+
+airbnb |>
+  count(listing_type)
+
+airbnb |>
+  count(room_type)
+
+airbnb |>
+  count(tier)
+
+airbnb |>
+  count(cancellation_policy)
+```
+
+We can see room_type and tier categorical variables do not appear to have errors.
+
+However, for better graph readability, we are going to combine 'Super Strict 30 Days' and 'Super Strict 60 Days' into a single category called 'Super Strict' on the cancellation_policy variable.
+
+```{r}
+#| label: cleaning-cancellation-policy-variables
+
+airbnb <- airbnb |>
+  mutate(
+    cancellation_policy = if_else(str_detect(cancellation_policy, "Super Strict"), "Super Strict", cancellation_policy)
+  )
+
+airbnb |>
+  count(cancellation_policy)
+```
+
+Let's group similar categories in the listing_type variable into more interpretable groups. This helps reduce category fragmentation and improves clarity in visualizations and analysis.
+
+For example, listings containing "home" are grouped as "Home", and similar logic applies to guesthouses, condos, townhouses, etc.
+
+All other listing types not explicitly matched remain unchanged.
+
+```{r}
+#| label: cleaning-listing-type-variables
+
+airbnb <- airbnb |>
+  mutate(
+    group_listing_type = case_when(
+      str_detect(listing_type, "home") ~ "Home",
+      str_detect(listing_type, "guesthouse") ~ "Guest House",
+      str_detect(listing_type, "condo") ~ "Condo",
+      str_detect(listing_type, "guest suite") ~ "Guest Suite",
+      str_detect(listing_type, "townhouse") ~ "Town House",
+      str_detect(listing_type, "bungalow") ~ "Bungalow",
+      str_detect(listing_type, "cottage") ~ "Cottage",
+      str_detect(listing_type, "Yurt") | 
+        str_detect(listing_type, "cabin") |
+        str_detect(listing_type, "Boat") | 
+        str_detect(listing_type, "Camper") ~ "Unique Stays",
+      TRUE ~ listing_type
+  ))
+
+airbnb |>
+  count(group_listing_type)
+```
+
+Now, we explore the categorical variables using summarize in order to detect potential errors or outliers splitting in two groups Property & Room Types and Revenue & Occupancy Variations.
+
+**Property & Room Types**
+
+```{r}
+#| label: explore-property-roomtypes-variables
+
+airbnb |>
+  summarize(
+    maxbedrooms = max(bedrooms, na.rm = TRUE), 
+    minbedrooms = min(bedrooms, na.rm = TRUE), 
+    meanbedrooms = mean(bedrooms, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxguests = max(guests, na.rm = TRUE), 
+    minguests = min(guests, na.rm = TRUE), 
+    meanguests = mean(guests, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxmin_nights = max(min_nights, na.rm = TRUE), 
+    minmin_nights= min(min_nights, na.rm = TRUE), 
+    meanmin_nights = mean(min_nights, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxnum_reviews = max(num_reviews, na.rm = TRUE), 
+    minnum_reviews = min(num_reviews, na.rm = TRUE), 
+    meannum_reviews = mean(num_reviews, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxrating_overall = max(rating_overall, na.rm = TRUE), 
+    minrating_overall = min(rating_overall, na.rm = TRUE), 
+    meanrating_overall = mean(rating_overall, na.rm = TRUE)
+  )
+```
+
+Most of the continuous variables appear to fall within a typical range. However, the min_nights variable includes an extreme outlier, with a maximum value of 160 consecutive nights required. This is far above the mean of 8.38 nights, suggesting a listing with an unusually long minimum stay policy that may distort the overall distribution.
+
+**Revenue & Occupancy Variations**
+
+```{r}
+#| label: explore-revenue-variables
+
+airbnb |>
+  summarize(
+    maxttm_vacant_days = max(ttm_vacant_days, na.rm = TRUE), 
+    minttm_vacant_days = min(ttm_vacant_days, na.rm = TRUE), 
+    meanttm_vacant_days = mean(ttm_vacant_days, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxttm_booked_days = max(ttm_booked_days, na.rm = TRUE), 
+    minttm_booked_days = min(ttm_booked_days, na.rm = TRUE), 
+    meanttm_booked_days = mean(ttm_booked_days, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxttm_occupancy = max(ttm_occupancy, na.rm = TRUE), 
+    minttm_occupancy = min(ttm_occupancy, na.rm = TRUE), 
+    meanttm_occupancy = mean(ttm_occupancy, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxttm_avg_rate = max(ttm_avg_rate, na.rm = TRUE), 
+    minttm_avg_rate = min(ttm_avg_rate, na.rm = TRUE), 
+    meanttm_avg_rate = mean(ttm_avg_rate, na.rm = TRUE)
+  )
+
+airbnb |>
+  summarize(
+    maxttm_revenue = max(ttm_revenue, na.rm = TRUE), 
+    minttm_revenue = min(ttm_revenue, na.rm = TRUE), 
+    meanttm_revenue = mean(ttm_revenue, na.rm = TRUE)
+  )
+```
+
+Most of the continuous variables fall within a typical range; however, the average daily rate (ttm_avg_rate) includes an extreme outlier with a maximum value of \$3,538.70. This significantly exceeds the mean of \$257.21, indicating the presence of a high-priced listing that may skew the distribution.
+
+Cleaning min_night and ttm_avg_rate from outliers.
+
+```{r}
+potential_outliers <- 
+  bind_rows(airbnb |> filter(ttm_avg_rate >= 2500), airbnb |> filter(min_nights >= 80)) |>
+  distinct()
+
+airbnb <- airbnb |> 
+  mutate(
+    ttm_avg_rate = if_else(ttm_avg_rate < 2500, ttm_avg_rate, NA), 
+    min_nights = if_else(min_nights < 80, min_nights, NA)
+  )
+
+print("ttm_avg_rate")
+summary(airbnb$ttm_avg_rate)
+print("min_nights")
+summary(airbnb$min_nights)
+
+```
+
+## Exploratory Data Analysis
+
+We’ll start our exploration by graphing each of the 15 individual variables on the airbnb data set.
+
+### Variation
+
+1.  Room Type Distribution: room_type
+
+    We begin by examining the distribution of room types using a bar chart.
+
+```{r}
+#| label: room-type-distribution
+
+airbnb |>
+  count(room_type) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  ggplot(aes(x = fct_reorder(room_type, percentage), y = percentage)) +
+    geom_bar(stat = "identity", aes(fill = room_type), show.legend = FALSE) +
+    geom_text(aes(label = paste0(round(percentage, 1), "%")), vjust = -0.5) +
+    scale_fill_manual(values = colors) + 
+    scale_x_discrete(labels = c("private_room" = "Private Room", "entire_home" = "Entire Home")) +
+    scale_y_continuous(breaks = seq(0, 100, by = 10), labels = label_percent(scale = 1)) +
+    labs(
+      title = "Percentage of Room Type Distribution",
+      x = "Room Type"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.title.y = element_blank()
+    )
+```
+
+-   The Austin Airbnb market is heavily skewed toward Entire Home listings, which make up 87.5% of the 272 observations. This suggests a strong guest preference for privacy, space, and potentially longer stays.
+
+2.  Property Type Distribution: group_listing_type
+
+```{r}
+#| label: listing-type-distribution
+
+airbnb |>
+  count(group_listing_type) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  ggplot(aes(x = fct_reorder(group_listing_type, percentage), y = percentage, fill = group_listing_type)) +
+    geom_bar(stat = "identity", show.legend = FALSE) + 
+    geom_text(aes(label = paste0(round(percentage, 1), "%")), size = 2.5, hjust = -0.1) +
+    scale_fill_manual(values = colors) + 
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    coord_flip() +
+    labs(
+      title ="Listing Type Distribution", 
+      x = "Listing Type",
+      y = "Percentage of Listings"
+    ) +
+    theme_minimal()
+
+```
+
+-   Looking at the property type distribution in Austin, House properties are the most common 48%, reflecting the local real estate landscape, catering likely to families or larger groups.
+
+-   Entire Rental Unit, Bungalow, and Condo are equally popular, each accounting for the same percentage of listings.
+
+-   Smaller segments like Entire Loft, Unique Stays, Cottage and Entire Villa, combined 6.2% offer potential for unique stay experiences.
+
+3.  Essential Amenities: amenities
+
+The following polar bar chart illustrates the frequency of the most commonly offered amenities across Airbnb listings. This analysis is based on the transformation of the original amenities column, which was split into individual items to allow for accurate counting and comparison.
+
+```{r}
+#| label: amenities
+
+# Convert the 'amenities' column from a single comma-separated string into multiple rows,
+# then clean up whitespace to create a structured 'amenities_vector' column.
+# This transformation makes it easier to count and analyze individual amenities.
+airbnb_vector <- airbnb |>
+  separate_rows(amenities, sep = ",") |>
+  mutate(amenities_vector = str_trim(amenities))  # remove leading/trailing spaces
+
+#Count frequency of the most important amenity in the airbnb
+amenity_counts <- airbnb_vector |>
+  count(amenities_vector, sort = TRUE) |>
+  filter(tolower(amenities_vector) == "tv" | 
+         tolower(amenities_vector) == "wifi" |
+         tolower(amenities_vector) == "air conditioning" |
+         tolower(amenities_vector) == "kitchen" |
+         tolower(amenities_vector) == "heating" |
+         tolower(amenities_vector) == "dishes and silverware" |
+         tolower(amenities_vector) == "refrigerator" |
+         tolower(amenities_vector) == "essentials")
+
+#ggplot
+ggplot(amenity_counts, aes(y = fct_reorder(amenities_vector, n), x = n)) +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE, color = "black", fill = "#6b6ecf") +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5), color = "white", alpha = 0.8, size = 3) +
+  scale_fill_manual(
+    values = colors,
+    name = "Amenities"
+  ) +
+  labs(
+    title = "Most Common Amenities Across Listings",
+    x = "Amenity",
+    y = "Number of Amenities"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+-   Wifi is the most prevalent amenity, present in 271 out of 272 listings, indicating that nearly all hosts recognize its importance for guests.
+
+-   Climate control features such as air conditioning (270) and heating (269) are almost universally available, which reflects both comfort standards and local weather expectations.
+
+-   Essentials (265), which typically include towels, bed linens, and basic toiletries, are also nearly ubiquitous, aligning with guest expectations for baseline hospitality.
+
+4.  Distribution of Quality classification (Basic, Plus, or Luxury tier) of the listing: tier
+
+The chart below presents the percentage distribution of listings based on Airbnb’s quality classification tiers.
+
+```{r}
+#| label: quality-classification
+
+airbnb |>
+  count(tier) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  ggplot(aes(x = fct_reorder(tier, percentage), y = percentage)) +
+    geom_bar(stat = "identity", aes(fill = tier), show.legend = FALSE) +
+    geom_text(aes(label = paste0(round(percentage, 1), "%")), vjust = -0.5) +
+    scale_fill_manual(values = colors) + 
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Percentage of Quality Classification",
+      x = "Tier"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.title.y = element_blank()
+    )
+```
+
+-   A dominant majority (96.7%) of listings fall under the "Plus" tier, indicating a high concentration of properties that meet elevated standards for design, quality, and guest experience.
+
+-   Only 3.3% of listings are classified as "Basic", suggesting that lower-tier properties are rare in this dataset.
+
+-   This skew toward the Plus tier may reflect host investment in property quality or a curation effect by Airbnb to highlight higher-quality listings in Austin.
+
+5.  Cancellation Policy: cancellation_policy
+
+The bar chart below presents the percentage distribution of cancellation policies across Airbnb listings.
+
+```{r}
+#| label: cancellation-police
+airbnb |>
+  count(cancellation_policy) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  ggplot(aes(x = fct_reorder(cancellation_policy, n), y = percentage)) +
+    geom_bar(stat = "identity", fill = "#9c9ede") +
+    geom_text(aes(label = paste0(round(percentage, 1), "%")), vjust = -0.5) +
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Percentage of Cancellation Police",
+      x = "Cancellation Police"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.title.y = element_blank()
+    )
+```
+
+-   A majority (59.7%) of hosts in Austin utilize Firm or Strict policies, indicating a market where hosts prioritize booking security.
+
+-   Only 7.7% of listings use the Flexible policy, indicating that few hosts offer full freedom to cancel without penalty.
+
+-   Super Strict policies are rare (4.4%), and may apply to special or long-term rentals.
+
+-   Missing data (NA) is minimal and likely negligible in terms of analytical impact.
+
+6.  Distribution of Neighborhood of the Property: zip_code
+
+    The horizontal bar chart displays the number of Airbnb listings per ZIP code in Austin.
+
+```{r}
+#| label: zip_code
+
+airbnb |>
+  count(zip_code) |>
+  mutate(zip_code = fct_reorder(as.factor(zip_code), n)) |>
+  ggplot(aes(x = zip_code, y = n)) +
+    geom_bar(stat = "identity", fill = "#1f77b4") +
+    scale_y_continuous(limits = c(0, 100)) +
+    coord_flip() +
+    labs(
+      title = "Distribution of Neighborhood of the Property",
+      x = "Zip Code",
+      y = "Number of Neighborhood"
+    ) +
+    theme_minimal()
+```
+
+-   The distribution shows that Airbnb activity is heavily concentrated in a few urban ZIP codes, particularly 78704 and 78702. These areas are known for walkability, entertainment, and access to downtown.
+
+-   Central ZIPs such as 78701 (Downtown) and 78703 (Clarksville/Tarrytown) also appear prominently but with fewer listings than 78704 and 78702.
+
+-   Outlying ZIP codes like 78749, 78737 have very few listings, suggesting that short-term rentals are concentrated in central and trendy neighborhoods.
+
+-   The presence of 19 listings with missing ZIP codes might impact location-based analytics.
+
+7\. Distribution of Listings by Number of Bedrooms: bedrooms
+
+```{r}
+#| label: bedrooms-distribution
+#| warning: false
+
+ggplot(airbnb, aes(x = bedrooms)) +
+  geom_histogram(binwidth = 0.5, fill = "#FC8D62", color = "black") +
+  scale_x_continuous(breaks = seq(0, 8, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 10)) +
+  labs(
+    title ="Distribution of Listings by Number of Bedrooms", 
+    x = "Bedrooms",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+-   The distribution is heavily right skewed where the dominant room capacity in Austin is 1 bedroom listings, with over 85 listing of the market. This suggests a strong demand for properties suitable for couples or solo travelers.
+
+-   Together, 1 bedroom and 2 bedrooms properties represent the majority of the active Airbnb listings in Austin, indicating a high concentration in these sizes.
+
+-   Over 35 listings offer 3 bedrooms, catering to larger groups and families seeking more space in Austin.
+
+8.  Distribution of Listings by Guest Capacity: guests
+
+```{r}
+#| label: guests-distribution-counting
+
+airbnb |>
+  filter(guests >= 8) |>
+  count(guests) |>
+  summarize(
+    larger_group = sum(n)
+  )
+```
+
+```{r}
+#| label: guests-distribution
+#| warning: false
+
+ggplot(airbnb, aes(x = guests)) +
+  geom_histogram(binwidth = 0.5, fill = "#FC8D62", color = "black") +
+  scale_x_continuous(breaks = seq(0, 16, by = 2)) +
+  scale_y_continuous(breaks = seq(0, 70, by = 10)) +
+  labs(
+    title = "Distribution of Listings by Guest Capacity", 
+    x = "Number of Guests",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+-   This distribution is heavily right skewed revealing that that most Airbnb listings in the dataset are designed to accommodate 2 to 6 guests, equipped to host 5 guests on average.
+
+-   The most common guest capacity trend in Austin vacation rentals is listings accommodating 2 guests. This suggests the primary traveler segment is smaller groups.
+
+-   Listings that host more than 12 guests are relatively rare, indicating that larger accommodations are less common in this market.
+
+-   50 of properties accommodate 8+ guests, serving the market segment for larger families or group travel in Austin.
+
+9.  Minimum length of stay required to book: min_nights
+
+We explore the min_nights variable to understand the minimum length of stay required by Airbnb listings. The histogram below visualizes how frequently each minimum night requirement appears among listings:
+
+```{r}
+#| label: minimun-nights
+#| warning: false
+
+airbnb |>
+  count(min_nights)
+
+ggplot(airbnb, aes(x = min_nights)) +
+  geom_histogram(binwidth = 5, fill = "#FC8D62", color = "black") +
+  ylim(0, 80) +
+  labs(
+      title = "Minimum Stay Requirements",
+      x = "Minimun Nights",
+      y = "Count of Listings"
+    ) +
+  theme_minimal()
+```
+
+-   The distribution is heavily right skewed, with the vast majority of listings requiring between 1 and 3 nights minimum. This suggests that the Austin Airbnb market caters primarily to short-term guests such as weekend travelers or business visitors.
+
+-   The most prevalent minimum stay requirement in Austin is 2 Nights, required by 105 listings. This highlights the market's preference for shorter, flexible bookings.
+
+-   Listings with more than 14 night minimum: Only 12 in total, suggesting extended stays are uncommon.
+
+10. Distribution of vacant days over twelve months: ttm_vacant_days
+
+This metric indicates how many days each listing remained un-booked within a 12 months period.
+
+```{r}
+#| label: vacant-days
+#| warning: false
+
+airbnb |>
+  summarize(
+    meanttm_vacant_days = mean(ttm_vacant_days, na.rm = TRUE),
+    percentage = (meanttm_vacant_days  / 365 * 100) - 100
+  )
+
+ggplot(airbnb, aes(x = ttm_vacant_days)) +
+  geom_histogram(binwidth = 5, fill = "#FC8D62", color = "black") +
+  xlim(0, 400) +
+  labs(
+    title ="Distribution of Vacant Days over 12 Months", 
+    x = "Vacant Days (TTM)",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+-   The average listing in Austin is vacant for about 237 days per year, which means it is booked roughly 35% of the time(based on 365 days).
+
+-   A significant number of listings are vacant for over 200 days, suggesting that many hosts face low occupancy rates.
+
+-   Very few listings have fewer than 100 vacant days, which implies that highly occupied listings are rare.
+
+-   The distribution is left skewed, with most listings clustering between 200–300 vacant days.
+
+11. Distribution of booked days in twelve months: ttm_booked_days
+
+The frequency polygon below illustrates how many days Airbnb listings in Austin were booked during the past year. This visualization helps us understand the overall occupancy performance across listings.
+
+```{r}
+#| label: booked-days
+#| warning: false
+
+airbnb |>
+  summarize(
+    mean_ttm_booked_days = mean(ttm_booked_days, na.rm = TRUE),
+    percentage = (mean_ttm_booked_days  / 365 * 100)
+  )
+
+ggplot(airbnb, aes(x = ttm_booked_days)) +
+  geom_freqpoly(binwidth = 10, linewidth = 0.60, color = "#1f77b4") +
+  scale_x_continuous(limits = c(0, 350)) +
+  labs(
+    title ="Distribution of Booked Days over 12 Months", 
+    x = "Booked Days (TTM)",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+-   The curve shows a right skewed distribution, indicating that only a small fraction of listings achieve high occupancy.
+
+-   The average listing in Austin was booked for about 127.6 days per year roughly 35% occupancy, or just over 10 nights per month.
+
+-   Listings with booked 250+ days are relatively rare, while most listings fall within the 50–150 booked days range, reflecting moderate utilization.
+
+-   With a maximum of 321 booked days, even the busiest listings still have more than 40 vacant days annually.
+
+12. Distribution of total revenue in twelve months: ttm_revenue
+
+    This metric represents each listing’s gross earnings from bookings during the past year.
+
+```{r}
+#| label: revenue-distribution
+meanttm_revenue <- airbnb |>
+  summarise(
+    meanttm_revenue = mean(ttm_revenue, na.rm = TRUE)
+  ) |>
+  pull(meanttm_revenue)
+
+ggplot(airbnb, aes(x = ttm_revenue)) +
+  geom_histogram(binwidth = 5000, fill = "#9c9ede", color = "#9c9ede") +
+  geom_vline(xintercept = meanttm_revenue, color = "#843c39", linewidth = 1) +
+  scale_x_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Distribution of Total Revenue Over 12 Months",
+    subtitle = paste("Mean =", comma(round(meanttm_revenue))),
+    x = "Revenue (TTM)",
+    y = "Number of Listings"
+  ) +
+theme_minimal()
+
+```
+
+-   The average listing earned approximately \$29,197 over the past year.
+
+-   The distribution is heavily right skewed, meaning most listings earn well below the average, and a small number of high-performing listings dramatically pull the mean upward.
+
+-   Many listings earn less than \$20,000 per year, suggesting part-time or under performing hosts.
+
+-   A few top-tier listings exceed \$100,000+, likely due to full-time operation, high occupancy, and premium pricing.
+
+13. Distribution of Average daily rate over trailing twelve months: ttm_avg_rate
+
+    The frequency polygon below shows the distribution of the average daily rate (ttm_avg_rate) charged by Airbnb listings over the past year. A vertical line highlights the overall mean.
+
+```{r}
+#| label: average-daily-rate-distribution
+
+meanttm_avg_rate <- airbnb |>
+  summarise(
+    meanttm_avg_rate = mean(ttm_avg_rate, na.rm = TRUE)
+  ) |>
+  pull(meanttm_avg_rate)
+
+ggplot(airbnb, aes(x = ttm_avg_rate)) +
+  geom_freqpoly(binwidth = 50, linewidth = 0.60, color = "#1f77b4") +
+  geom_vline(xintercept = meanttm_avg_rate, color = "#843c39", linewidth = 1) +
+  scale_x_continuous(labels = scales::label_dollar(), breaks = seq(0, 3500, by = 500)) +
+  labs(
+    title ="Distribution of Average Daily Rate over 12 Months", 
+    subtitle = paste("Mean =", comma(round(meanttm_avg_rate))),
+    x = "Average Rate",
+    y = "Number of Listings"
+  ) +
+  theme_minimal()
+```
+
+-   The average daily rate across listings is approximately \$244, but this mean is heavily influenced by a few high priced outliers.
+
+-   The distribution is right skewed, with the majority of listings priced under \$300 per night.
+
+-   The peak density occurs between \$100 and \$200, indicating this is the most common nightly price range in Austin.
+
+14. Total number of reviews received: num_reviews
+
+    The histogram below displays how many total reviews each Airbnb listing in Austin has received. It helps us understand guest engagement and listing popularity across the dataset.
+
+```{r}
+#| label: number-reviews
+#| warning: false
+
+airbnb |>
+  mutate(
+    review_group = case_when(
+      num_reviews <= 100 ~ "0–100",
+      num_reviews <= 300 ~ "101–300",
+      num_reviews >= 1000 ~ "1000+",
+      TRUE ~ "301–999"),
+    review_group = factor(review_group, levels = c("0–100", "101–300", "301–999", "1000+"))
+  ) |>
+  count(review_group)|>
+  ggplot(aes(x = review_group, y = n)) +
+  geom_bar(stat = "identity", aes(fill = review_group)) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  scale_y_continuous(limits = c(0, 120)) +
+  scale_fill_manual(values = colors) + 
+  labs(
+    title = "Number of Reviews Received by Group",
+    x = "Reviews by Group",
+    y = "Number of Listings",
+    fill = "Review Groups"
+  ) +
+  theme_minimal()
+```
+
+-   The average listing in the dataset has received 208 reviews, suggesting a moderate level of guest interaction.
+
+-   The distribution is right skewed, with 215 listings receiving fewer than 300 reviews.
+
+-   A significant number of listings(111) have fewer than 100 reviews, indicating either new hosts or less popular properties.
+
+-   A small number of high-performing listings(5) have received over 1,000 reviews, reflecting long-standing popularity or consistently high occupancy.
+
+15. Overall star rating of the property: rating_overall
+
+    The histogram below shows the overall average star ratings given to Airbnb listings in Austin. This variable reflects the cumulative feedback from guests on a scale typically ranging from 1 to 5 stars.
+
+```{r}
+#| label: ratings
+#| warning: false
+
+ggplot(airbnb, aes(x = rating_overall)) +
+  geom_histogram(bins = 15, fill = "#9c9ede", color = "black") +
+  ylim(0, 115) +
+  xlim(4.20, 5.0) +
+  labs(
+      title = "Star Rating by Property",
+      x = "Rating",
+      y = "Number of Listings"
+    ) +
+  theme_minimal()
+```
+
+-   The mean overall rating is 4.9, indicating very high guest satisfaction across listings.
+
+-   The distribution is heavily left skewed, clustered near 5, showing that most properties are rated between 4.8 and 5.0 stars.
+
+-   The lowest rating observed is 4.3, suggesting that poorly rated listings are either uncommon or removed from the platform.
+
+-   Over 100 listings are grouped near the 4.9–5.0 mark, demonstrating a consistently strong quality of service among hosts.
+
+## Covariation
+
+We’ll continuous our exploration by graphing out multiple variables combined.
+
+### Two Categorical Variables
+
+16. Listing Type vs Quality classification
+
+This faceted bar chart displays the number of Airbnb listings in Austin by their grouped listing type, split by room type(Entire Home vs Private Room) and colored by quality tier (Basic vs Plus).
+
+```{r}
+#| label: group-listing-type-vs-quality-type
+
+# Dataset (count)
+airbnb_counts <- airbnb |>
+  group_by(room_type, group_listing_type, tier) |>
+  summarise(value = n(), .groups = "drop") |>
+  mutate(metric = "Count")
+
+# Dataset (percentage)
+airbnb_percent <- airbnb_counts |>
+  group_by(room_type, group_listing_type) |>
+  mutate(value = value / sum(value) * 100) |>
+  mutate(metric = "Percentage")
+
+airbnb_combined <- bind_rows(airbnb_counts, airbnb_percent)
+
+ggplot(airbnb_combined, aes(x = value, y = fct_rev(group_listing_type), fill = tier)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(
+    data = filter(airbnb_combined, metric == "Percentage"),
+    aes(label = paste0(round(value, 1), "%")),
+    position = position_stack(vjust = 0.7),
+    hjust = 1,
+    size = 3,
+    alpha = 0.8
+  ) +
+  facet_grid(metric ~ room_type, labeller = labeller(
+    room_type = c("entire_home" = "Entire Home", "private_room" = "Private Room"),
+    metric = c("Count" = "Total Listings", "Percentage" = "Listing Share (%)")
+  )) +
+  scale_fill_manual(values = colors) +
+  scale_x_continuous(limits = c(0, 120)) +
+  labs(
+    title = "Distribution of Listing Type by Quality Classification",
+    x = NULL,
+    y = "Listing Type",
+    fill = "Tier Classification"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+```
+
+-   The vast majority of listings (237 out of 271) are classified as Entire Homes, while Private Rooms account for only 34 listings, showing a clear market preference for full-property rentals in Austin.
+
+-   Most listings are labeled under the "Plus" tier (262), indicating higher-quality, vetted properties with consistent standards. Basic-tier listings (only 9) are rare and largely concentrated in lower-volume categories.
+
+-   Private Rooms are not present in Entire Villas, Entire Rental Units, or Entire Lofts. Their absence highlights the strong preference for privacy among guests in Austin.
+
+-   Unique Stays (such as yurts, cabins, or boats) appear in the Private Room category and add diversity to the listing pool. They are also almost entirely classified under the Basic tier, likely due to their novelty and niche appeal.
+
+17. Listing Type divided by Cancellation Policy
+
+```{r}
+#| label: group-listing-type-vs-cancellation_policy
+
+ggplot(airbnb, aes(x = group_listing_type, fill = cancellation_policy)) +
+  geom_bar() +
+  scale_fill_manual(
+    values = colors,
+    name = "Cancellation Policy"
+  ) +
+  labs(
+    title = "Distribution of Listing Type by Cancellation Policy",
+    x = "Listing Type",
+    y = "Count of Listing"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+-   Homes, the most common listing type, show a wide spread across all cancellation policies, but are especially concentrated in Strict, Firm, and Moderate categories, suggesting hosts of full homes may impose more rigid cancellation terms to protect revenue.
+
+-   Guest Houses also appear frequently under Strict and Firm policies, which aligns with their popularity as standalone accommodations with moderate-to-high demand.
+
+-   Bungalow and Entire Rental Unit listings tend to lean toward Moderate policies, reflecting a balance between guest flexibility and host protection.
+
+-   Guest Suites, Town Houses, and Cottages appear in lower numbers, but most lean toward Strict policies, suggesting that even smaller units often opt for protective cancellation terms.
+
+### Two Continuous Variables
+
+18. Booked Days vs Revenue
+
+The scatter plot displays a positive relationship between the number of booked days and total revenue as booked days increase, revenue generally rises.
+
+```{r}
+#| label: revenue-vs-booked-days
+ggplot(airbnb, aes(x = ttm_booked_days, y = ttm_revenue)) +
+  geom_point(
+    aes(color = tier), na.rm = TRUE, position = position_jitter(width = 2, height = 0), alpha = 0.8, size = 2) +
+  geom_smooth(se = FALSE, method = 'lm', formula = y ~ x, linewidth = 1, na.rm = TRUE, color = "#843c39") +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Relationship Between Booked Days and Revenue",
+    subtitle = "Color indicates listing quality tier (Tier)",
+    x = "Booked Days (TTM)",
+    y = "Revenue (TTM)",
+    color = "Tier Classification"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.subtitle = element_text(size = 11)
+  )
+```
+
+-   Plus-tier listings dominate higher revenue and higher booking ranges while Basic-tier listings tend to cluster in the lower-left corner, suggesting fewer booked days and lower earnings overall. This means that higher-tier listings enjoy more demand and profitability.
+
+-   Despite the maximum of 321 booked days, very few listings reach that level, indicating it is an outlier.
+
+-   Most listings fall between 50–200 booked days and \$5,000–\$40,000 in revenue, which appears to be the core performance zone.
+
+-   Some listings generate relatively high revenue despite fewer booked days, possibly due to higher nightly rates, suggesting a premium pricing strategy.
+
+19. Relationship between Average Daily Rate vs Minimum nights
+
+The scatterplot shows how the minimum number of nights required to book a listing relates to the average daily rate over a 12-month period.
+
+```{r}
+#| label: average-rate-vs-minimun-nights
+
+ggplot(airbnb, aes(x = ttm_avg_rate, y = min_nights, color = min_nights <= 3)) +
+  geom_point(alpha = 0.8, size = 2, position = position_jitter()) +
+  geom_point(
+    data = potential_outliers,
+    size = 2, color = "black"
+  ) +
+  scale_x_continuous(labels = scales::label_dollar()) +
+  scale_y_continuous(breaks = seq(0, 200, by = 20)) +
+  labs(
+    title = "Relationship Between Average Daily Rate and Minimum Nights",
+    subtitle = "Outliers indicated by black dots",
+    x = "Average Daily Rate",
+    y = "Minimum Night Requirement",
+    color = "3 Nights or Less"
+  ) +
+  theme_minimal()
+
+```
+
+-   There is no strong linear trend between daily rate and minimum night requirement, listings with higher daily rates do not uniformly impose longer minimum stays.
+
+-   The most common minimum requirement is around 1 to 3 nights, aligning with traveler preferences for short stays in urban areas like Austin.
+
+-   A small number of listings have extremely high daily rates above \$1,000.
+
+-   Listings requiring longer minimum stays more than 80 nights are rare and consider as outliers. They were excluded from the data to graph.
+
+-   Outliers, like the \$3,538 daily rate, significantly affect the mean, so it was excluded as part of the process.
+
+20. Distribution of Vacant Days by Zip Code
+
+```{r}
+ggplot(airbnb, aes(x = zip_code, y = ttm_vacant_days)) +
+  geom_point(
+    aes(color = room_type), na.rm = TRUE, position = position_jitter(width = 2, height = 0), alpha = 0.8, size = 2) +
+  geom_smooth(se = FALSE, method = 'loess', formula = y ~ x, linewidth = 1, na.rm = TRUE, color = "#843c39") +
+  scale_color_discrete(name = "Room Type",
+                       labels = c("entire_home" = "Entire Home", "private_room" = "Private Room")) +
+  labs(
+    title = "Distribution of Vacant Days by Zip Code",
+    x = "Zip Code",
+    y = "Vacant Days (TTM)"
+  ) +
+  theme_minimal(base_size = 12) 
+```
+
+-   Entire homes appear across all ZIP codes, since they dominate the Austin market.
+
+-   There are higher vacancy rates in some central ZIP codes, like 78702 and 78704, potentially due to the high density of listings in these areas.
+
+### One Categorical and One Continuous Variables
+
+21. Room Type vs Rating
+
+This boxplot shows how the rating varies across different types of rooms. Each box represents the interquartile range, with the line inside showing the median. The black diamond indicates the mean, and red dots are outliers.
+
+```{r}
+#| label: room-type-vs-rating
+#| warning: false
+
+ggplot(airbnb, aes(x = room_type, y = rating_overall, fill = tier)) +
+  geom_boxplot(outlier.color = "#843c39", outlier.size = 3, width = 0.6, na.rm = TRUE) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "black") +
+  scale_x_discrete(labels = c("private_room" = "Private Room", "entire_home" = "Entire Home")) +
+  labs(
+    title = "Distribution of Reviews by Room Type",
+    subtitle = "Each box shows the median, quartiles, and outliers for listings type",
+    x = "Room Type",
+    y = "Rating",
+    fill = "Tier Type"
+  ) +
+  theme_minimal(base_size = 12) 
+```
+
+```{r}
+airbnb |>
+  group_by(room_type, tier) |>
+  summarize(
+    median = median(rating_overall, na.rm=TRUE), 
+    n=n()
+  )
+```
+
+-   Both room types appear to have similarly high rating distributions, with minimal visual or statistical separation between them.
+
+-   The mean and median ratings for both room types are close to 4.9, suggesting that guests rate both private rooms and entire homes favorably.
+
+-   Listings in the Plus tier may show slightly less variability, with tighter interquartile ranges and more clustering around 4.9–5.0.
+
+22. Listing Type vs Revenue
+
+This boxplot shows how the number of reviews varies across different types of listings. Each box represents the interquartile range, with the line inside showing the median. The black diamond indicates the mean, and red dots are outliers.
+
+```{r}
+#| label: listing-type-vs-revenue
+
+ggplot(airbnb, aes(x = fct_reorder(group_listing_type, ttm_revenue, median), y = ttm_revenue)) +
+  geom_boxplot(outlier.color = "#843c39", outlier.alpha = 0.8, outlier.size = 3, width = 0.6, na.rm = TRUE) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "black") +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Distribution of Listing Type by Vacant Days",
+    subtitle = "Each box shows the median, quartiles, and outliers for vacant days",
+    y = "Revenue in Last 12 Months",
+    x = "Listing Type",
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+```{r}
+airbnb |>
+  group_by(group_listing_type) |>
+  summarize(
+    median = median(ttm_revenue, na.rm=TRUE), 
+    n=n()
+  )
+```
+
+-   Listing types like Villas, Lofts, Bungalows tend to generate more revenue, while standard accommodations like Condos or Guest Suites have lower revenues, potentially due to competition or limited space.
+
+-   Entire Villa has the highest median revenue at \$61,926, but with only includes 1 listing, so it's not statistically robust.
+
+-   The Condo category ranks the lowest in median revenue, at \$13,673, which is less than half the overall average.
+
+-   There are numerous outliers, especially in Home, Guest House, and Entire Rental Unit categories, indicating a few very high-performing listings skew the revenue upward.
